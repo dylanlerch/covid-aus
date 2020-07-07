@@ -9,16 +9,45 @@
 
 	<script>
 		var covidData = {};
-		var supportedStates = [
-			"new south wales",
-			"victoria",
-			"queensland",
-			"south australia",
-			"western australia",
-			"tasmania",
-			"northern territory",
-			"australian capital territory"
-		];
+		var defaultSettings = {
+			spanGaps: true,
+			lineTension: 0.05,
+			backgroundColor: 'rgba(255, 255, 255, 0)',
+		};
+		var supportedStates = {
+			"new south wales": {
+				"label": "New South Wales",
+				"borderColor": "rgb(0, 60, 255)"
+			},
+			"victoria": {
+				"label": "Victoria",
+				"borderColor": "rgb(162, 0, 255)"
+			},
+			"queensland": {
+				"label": "Queensland",
+				"borderColor": "rgb(235, 52, 52)"
+			},
+			"south australia": {
+				"label": "South Australia",
+				"borderColor": "rgb(10, 97, 0)"
+			},
+			"western australia": {
+				"label": "Western Australia",
+				"borderColor": "rgb(255, 0, 144)"
+			},
+			"tasmania": {
+				"label": "Tasmania",
+				"borderColor": "rgb(89, 255, 0)"
+			},
+			"northern territory": {
+				"label": "Northern Territory",
+				"borderColor": "rgb(0, 255, 242)"
+			},
+			"australian capital territory": {
+				"label": "Australian Capital Territory",
+				"borderColor": "rgb(235, 225, 52)"
+			}
+		};
 
 		fetch('https://raw.githubusercontent.com/dylanlerch/covid-aus-data/master/data.json')
 			.then(response => response.json())
@@ -29,42 +58,134 @@
 
 		function render(data) {
 			var organisedData = organiseDataset(data);
-			renderGraph();
+
+			var newCases = getNewConfirmedCaseData(organisedData);
+
+			renderGraph(newCases);
 		}
 
 		function organiseDataset(data) {
-			console.log(data);
-			console.log(data.states);
+			var dateSet = {};
+			var states = {};
 
+			// Get a list of the supported states as an array for filtering later
+			var supportedStatesArray = [];
+			for (state in supportedStates) {
+				supportedStatesArray.push(state);
+			}
+
+			// Filter out the states that we don't want, get the superset of all
+			// of the dates of data for all states
 			for (state in data.states) {
-				if (supportedStates.includes(state)) {
+				if (supportedStatesArray.includes(state)) {
 					var stateData = data.states[state];
+					states[state] = stateData;
 
-					console.log(stateData);
+					for (entry of stateData.data) {
+						dateSet[entry.date] = true;
+					}
 				}
 			}
+
+			// Order the dates ascending
+			var dates = [];
+			for (date in dateSet) {
+				dates.push(date);
+			}
+			dates.sort((a, b) => a > b);
+
+			// For each state, initialise empty data on each date 
+			data = {}
+			for (date of dates) {
+				var dataForDay = {};
+
+				for (state in states) {
+					dataForDay[state] = {
+						total: {
+							confirmed: null,
+							deaths: null,
+							recovered: null
+						},
+						new: {
+							confirmed: null,
+							deaths: null,
+							recovered: null
+						}
+					}
+				}
+
+				data[date] = dataForDay;
+			}
+
+			// Loop through the data from each of the states and  fill in the
+			// empty data structure initiaised above
+			for (state in states) {
+				var stateData = states[state];
+
+				for (dataForDay of stateData.data) {
+					data[dataForDay.date][state].total = dataForDay.total;
+					data[dataForDay.date][state].new = dataForDay.new;
+				}
+			}
+
+			return data;
+		}
+
+		function getNewConfirmedCaseData(data) {
+			var result = {
+				labels: [],
+				datasets: []
+			}
+
+			var datasets = {};
+			console.log(data);
+
+			// Add data and labels
+			for (day in data) {
+				result.labels.push(day);
+
+				var dayData = data[day];
+
+				for (state in dayData) {
+					if (!datasets[state]) {
+						datasets[state] = { data: [] };
+					}
+
+					var stateDayData = dayData[state];
+					datasets[state].data.push(stateDayData.new.confirmed);
+				}
+			}
+
+			console.log(datasets);
+
+			// Add formatting, and push to final output
+			for (datasetId in datasets) {
+				var dataset = datasets[datasetId];
+
+				dataset = {
+					...defaultSettings,
+					...supportedStates[datasetId],
+					...dataset
+				};
+
+				result.datasets.push(dataset);
+			}
+
+			return result;
 		}
 
 
-		function renderGraph() {
+		function renderGraph(data) {
 			var ctx = document.getElementById('chart').getContext('2d');
 			var chart = new Chart(ctx, {
-				// The type of chart we want to create
 				type: 'line',
-
-				// The data for our dataset
-				data: {
-					labels: ['January', 'February', 'March', 'April', 'May', 'June', 'July'],
-					datasets: [{
-						label: 'My First dataset',
-						backgroundColor: 'rgba(255, 99, 132, 0.4)',
-						borderColor: 'rgb(255, 99, 132)',
-						data: [0, 10, 5, 2, 20, 30, 45]
-					}]
+				data: data,
+				options: {
+					aspectRatio: 5,
+					legend: {
+						position: 'left'
+					}
 				},
-
-				// Configuration options go here
-				options: {}
 			});
 
 		}
