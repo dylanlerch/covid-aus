@@ -1,0 +1,74 @@
+<html>
+
+<head>
+	<script src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.3/Chart.min.js'></script>
+</head>
+
+<body>
+	<canvas id="chart"></canvas>
+
+	<script>
+		var covidData = {};
+		var supportedStates = [
+			"new south wales",
+			"victoria",
+			"queensland",
+			"south australia",
+			"western australia",
+			"tasmania",
+			"northern territory",
+			"australian capital territory"
+		];
+
+		fetch('https://raw.githubusercontent.com/dylanlerch/covid-aus-data/master/data.json')
+			.then(response => response.json())
+			.then(data => {
+				covidData = data;
+				render(data);
+			});
+
+		function render(data) {
+			var organisedData = organiseDataset(data);
+			renderGraph();
+		}
+
+		function organiseDataset(data) {
+			console.log(data);
+			console.log(data.states);
+
+			for (state in data.states) {
+				if (supportedStates.includes(state)) {
+					var stateData = data.states[state];
+
+					console.log(stateData);
+				}
+			}
+		}
+
+
+		function renderGraph() {
+			var ctx = document.getElementById('chart').getContext('2d');
+			var chart = new Chart(ctx, {
+				// The type of chart we want to create
+				type: 'line',
+
+				// The data for our dataset
+				data: {
+					labels: ['January', 'February', 'March', 'April', 'May', 'June', 'July'],
+					datasets: [{
+						label: 'My First dataset',
+						backgroundColor: 'rgba(255, 99, 132, 0.4)',
+						borderColor: 'rgb(255, 99, 132)',
+						data: [0, 10, 5, 2, 20, 30, 45]
+					}]
+				},
+
+				// Configuration options go here
+				options: {}
+			});
+
+		}
+	</script>
+</body>
+
+</html>
