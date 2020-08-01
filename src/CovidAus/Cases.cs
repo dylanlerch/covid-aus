@@ -13,6 +13,14 @@ namespace CovidAus
 		[JsonPropertyName("recovered")]
 		public int Recovered { get; private set; }
 
+		
+		public Cases()
+		{
+			Confirmed = 0;
+			Deaths = 0;
+			Recovered = 0;
+		}
+		
 		public Cases(int confirmed, int deaths, int recovered)
 		{
 			Confirmed = confirmed;

@@ -25,8 +25,7 @@ namespace CovidAus
 
 		private async Task Start()
 		{
-			//var path = await DownloadCovidData();
-			var path = Path.Combine(WorkFolder, "data");
+			var path = await DownloadCovidData();
 			var reports = ProcessReports(path);
 			var data = FormatAndCalculateData(reports);
 			WriteData(data);
@@ -114,8 +113,8 @@ namespace CovidAus
 
 					while (csv.Read())
 					{
-						var country = GetField<string>(csv, Constants.Headers.Country);
-						var state = GetField<string>(csv, Constants.Headers.State);
+						var country = GetField<string>(csv, Constants.Headers.Country).ToLowerInvariant();
+						var state = GetField<string>(csv, Constants.Headers.State).ToLowerInvariant();
 
 						// Only want to extract the Australian values
 						if (country is object && state is object && country.Equals("australia", StringComparison.InvariantCultureIgnoreCase))
@@ -124,6 +123,7 @@ namespace CovidAus
 							{
 								Country = country,
 								State = state,
+								FormattedStateName = GetField<string>(csv, Constants.Headers.State),
 								LastUpdate = GetField<string>(csv, Constants.Headers.LastUpdate),
 								Confirmed = GetField<int>(csv, Constants.Headers.Confirmed),
 								Deaths = GetField<int>(csv, Constants.Headers.Deaths),
@@ -161,24 +161,68 @@ namespace CovidAus
 		public Data FormatAndCalculateData(SortedList<DateTimeOffset, DailyReport> reports)
 		{
 			var runningTotals = new RunningTotals();
+			var stateSet = new HashSet<string>();
 			var data = new Data();
 
-			// There is a report every day, so we're just starting from the 
-			// first day of data and working our way forward.
+			// Prepare the dataset and target container for processing.
+			//
+			// Reports don't have data for each state for each day (as some states only
+			// started reporting cases later in the outbreak). Need to do a first pass
+			// of the data to find all of the states available for Australia.
 			foreach (var day in reports)
 			{
-				var date = day.Key;
-
+				// Keep a record of all of the dates, this will likely be the
+				// x-axis labels wherever it is graphed.
+				data.Dates.Add(day.Key);
+				
 				foreach (var state in day.Value.Data)
 				{
 					var stateName = state.Key;
-					var stateData = state.Value;
+					if (stateSet.Add(stateName))
+					{
+						// Add a new dataset container for this state, we'll add
+						// data to it in the next pass.
+						var newStateData = new StateData() {
+							DisplayName = state.Value.FormattedStateName
+						};
 
-					var totalCases = new Cases(stateData.Confirmed, stateData.Deaths, stateData.Recovered);
-					var newCases = runningTotals.GetNewCases(stateName, totalCases);
+						data.States.Add(stateName, newStateData);
+					}
+				}
+			}
 
-					var dailyStateData = new DailyStateData(date, totalCases, newCases);
-					data.AddDataForState(stateName, dailyStateData);
+			// There is a report every day, so we're just starting from the 
+			// first day of data and working our way forward. These days need to
+			// be in order or the running totals will not work.
+			foreach (var reportDay in reports)
+			{
+				var reportDayDate = reportDay.Key;
+				var reportDayStates = reportDay.Value;
+
+				foreach (var stateName in stateSet)
+				{
+					var state = data.States[stateName];
+
+					// If there is no data for the state on this day, it will be
+					// recorded as all zeros. This will make sure we have a full
+					// set of data for all states for all days. If there is data
+					// for this day, we'll overwrite this value below.
+					var totalCasesForState = new Cases();
+
+					if (reportDayStates.Data.ContainsKey(stateName))
+					{
+						var reportDayStateData = reportDayStates.Data[stateName];
+						totalCasesForState = new Cases(
+							reportDayStateData.Confirmed,
+							reportDayStateData.Deaths,
+							reportDayStateData.Recovered
+						);
+					}
+					
+					var newCasesForState = runningTotals.GetNewCases(stateName, totalCasesForState);
+
+					var dailyStateData = new DailyStateData(reportDayDate, totalCasesForState, newCasesForState);
+					state.Data.Add(dailyStateData);
 				}
 			}
 
@@ -187,6 +231,7 @@ namespace CovidAus
 
 		public void WriteData(Data data)
 		{
+			Console.WriteLine("Saving data to disk");
 			var options = new JsonSerializerOptions();
 			options.WriteIndented = true;
 			options.Converters.Add(new DateOnlyConverter());
@@ -195,6 +240,7 @@ namespace CovidAus
 			var dataString = JsonSerializer.Serialize(data, options);
 
 			File.WriteAllText(dataPath, dataString);
+			Console.WriteLine($"Done saving data to disk at path: '{dataPath}'");
 		}
 	}
 }

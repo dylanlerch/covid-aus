@@ -1,194 +1,351 @@
 <html>
 
 <head>
-	<script src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.3/Chart.min.js'></script>
+	<script src="https://d3js.org/d3.v5.min.js"></script>
+	<style>
+		.line {
+			fill: none;
+			stroke-width: 2px;
+		}
+
+		svg {
+			margin: 50px;
+		}
+	</style>
 </head>
 
 <body>
-	<canvas id="chart"></canvas>
-
 	<script>
-		var covidData = {};
 		var defaultSettings = {
 			spanGaps: true,
-			lineTension: 0.05,
+			lineTension: 0.2,
 			backgroundColor: 'rgba(255, 255, 255, 0)',
 		};
-		var supportedStates = {
+
+		var stateConfiguration = {
 			"new south wales": {
-				"label": "New South Wales",
-				"borderColor": "rgb(0, 60, 255)"
+				label: "New South Wales",
+				shortLabel: "NSW",
+				color: "rgb(0, 60, 255)"
 			},
 			"victoria": {
-				"label": "Victoria",
-				"borderColor": "rgb(162, 0, 255)"
+				label: "Victoria",
+				shortLabel: "VIC",
+				color: "rgb(162, 0, 255)"
 			},
 			"queensland": {
-				"label": "Queensland",
-				"borderColor": "rgb(235, 52, 52)"
+				label: "Queensland",
+				shortLabel: "QLD",
+				color: "rgb(235, 52, 52)"
 			},
 			"south australia": {
-				"label": "South Australia",
-				"borderColor": "rgb(10, 97, 0)"
+				label: "South Australia",
+				shortLabel: "SA",
+				color: "rgb(10, 97, 0)"
 			},
 			"western australia": {
-				"label": "Western Australia",
-				"borderColor": "rgb(255, 0, 144)"
+				label: "Western Australia",
+				shortLabel: "WA",
+				color: "rgb(255, 0, 144)"
 			},
 			"tasmania": {
-				"label": "Tasmania",
-				"borderColor": "rgb(89, 255, 0)"
+				label: "Tasmania",
+				shortLabel: "TAS",
+				color: "rgb(89, 255, 0)"
 			},
 			"northern territory": {
-				"label": "Northern Territory",
-				"borderColor": "rgb(0, 255, 242)"
+				label: "Northern Territory",
+				shortLabel: "NT",
+				color: "rgb(0, 255, 242)"
 			},
 			"australian capital territory": {
-				"label": "Australian Capital Territory",
-				"borderColor": "rgb(235, 225, 52)"
+				label: "Australian Capital Territory",
+				shortLabel: "ACT",
+				color: "rgb(235, 225, 52)"
 			}
 		};
 
-		fetch('https://raw.githubusercontent.com/dylanlerch/covid-aus-data/master/data.json')
-			.then(response => response.json())
-			.then(data => {
-				covidData = data;
-				render(data);
-			});
-
-		function render(data) {
-			var organisedData = organiseDataset(data);
-
-			var newCases = getNewConfirmedCaseData(organisedData);
-
-			renderGraph(newCases);
+		var supportedStates = [];
+		for (var stateName in stateConfiguration) {
+			supportedStates.push(stateName);
 		}
 
-		function organiseDataset(data) {
-			var dateSet = {};
-			var states = {};
 
-			// Get a list of the supported states as an array for filtering later
-			var supportedStatesArray = [];
-			for (state in supportedStates) {
-				supportedStatesArray.push(state);
+
+		let x;
+		let y;
+		let line;
+		let path;
+		let data;
+
+		let statContainer;
+		let statDate;
+
+
+		fetch('https://raw.githubusercontent.com/dylanlerch/covid-aus-data/master/data.json?v=1')
+			.then(response => response.json())
+			.then(dataset => {
+				data = prepareData(dataset);
+				render();
+			});
+
+		function prepareData(dataset) {
+			var data = {
+				dates: [],
+				states: []
 			}
 
-			// Filter out the states that we don't want, get the superset of all
-			// of the dates of data for all states
-			for (state in data.states) {
-				if (supportedStatesArray.includes(state)) {
-					var stateData = data.states[state];
-					states[state] = stateData;
-
-					for (entry of stateData.data) {
-						dateSet[entry.date] = true;
-					}
-				}
+			// Parse the top level list of dates
+			var parseDate = d3.utcParse("%Y-%m-%d");
+			for (var date of dataset.dates) {
+				var parsedDate = parseDate(date);
+				data.dates.push(parsedDate);
 			}
 
-			// Order the dates ascending
-			var dates = [];
-			for (date in dateSet) {
-				dates.push(date);
-			}
-			dates.sort((a, b) => a > b);
+			// Parse the data in each state
+			for (var stateId in dataset.states) {
+				var state = dataset.states[stateId];
 
-			// For each state, initialise empty data on each date 
-			data = {}
-			for (date of dates) {
-				var dataForDay = {};
-
-				for (state in states) {
-					dataForDay[state] = {
-						total: {
-							confirmed: null,
-							deaths: null,
-							recovered: null
-						},
-						new: {
-							confirmed: null,
-							deaths: null,
-							recovered: null
-						}
-					}
+				for (var stateData of state.data) {
+					stateData.date = parseDate(stateData.date);
 				}
 
-				data[date] = dataForDay;
-			}
-
-			// Loop through the data from each of the states and  fill in the
-			// empty data structure initiaised above
-			for (state in states) {
-				var stateData = states[state];
-
-				for (dataForDay of stateData.data) {
-					data[dataForDay.date][state].total = dataForDay.total;
-					data[dataForDay.date][state].new = dataForDay.new;
+				// If it's a supported state, add it to the output list
+				if (supportedStates.includes(stateId)) {
+					state.color = stateConfiguration[stateId].color;
+					state.shortLabel = stateConfiguration[stateId].shortLabel;
+					data.states.push(state);
 				}
 			}
 
 			return data;
 		}
 
-		function getNewConfirmedCaseData(data) {
-			var result = {
-				labels: [],
-				datasets: []
-			}
+		function getDimensions() {
+			var fullWidth = 960;
+			var fullHeight = 500;
+			var margin = {
+				top: 10,
+				right: 10,
+				bottom: 10,
+				left: 10
+			};
 
-			var datasets = {};
-			console.log(data);
+			var width = fullWidth - margin.left - margin.right;
+			var height = fullHeight - margin.top - margin.bottom;
 
-			// Add data and labels
-			for (day in data) {
-				result.labels.push(day);
+			return {
+				margin,
+				width,
+				height
+			};
+		}
 
-				var dayData = data[day];
-
-				for (state in dayData) {
-					if (!datasets[state]) {
-						datasets[state] = { data: [] };
-					}
-
-					var stateDayData = dayData[state];
-					datasets[state].data.push(stateDayData.new.confirmed);
+		function getMaximums(data) {
+			var maximums = {
+				total: {
+					confirmed: 0,
+					deaths: 0,
+					recovered: 0
+				},
+				new: {
+					confirmed: 0,
+					deaths: 0,
+					recovered: 0
 				}
 			}
 
-			console.log(datasets);
+			// Parse the data in each state
+			for (var state of data.states) {
+				for (var data of state.data) {
+					if (data.total.confirmed > maximums.total.confirmed) maximums.total.confirmed = data.total.confirmed;
+					if (data.total.deaths > maximums.total.deaths) maximums.total.deaths = data.total.deaths;
+					if (data.total.recovered > maximums.total.recovered) maximums.total.recovered = data.total.recovered;
 
-			// Add formatting, and push to final output
-			for (datasetId in datasets) {
-				var dataset = datasets[datasetId];
-
-				dataset = {
-					...defaultSettings,
-					...supportedStates[datasetId],
-					...dataset
-				};
-
-				result.datasets.push(dataset);
+					if (data.new.confirmed > maximums.new.confirmed) maximums.new.confirmed = data.new.confirmed;
+					if (data.new.deaths > maximums.new.deaths) maximums.new.deaths = data.new.deaths;
+					if (data.new.recovered > maximums.new.recovered) maximums.new.recovered = data.new.recovered;
+				}
 			}
 
-			return result;
+			return maximums;
 		}
 
+		function render() {
+			const maximums = getMaximums(data);
+			const dimensions = getDimensions();
 
-		function renderGraph(data) {
-			var ctx = document.getElementById('chart').getContext('2d');
-			var chart = new Chart(ctx, {
-				type: 'line',
-				data: data,
-				options: {
-					aspectRatio: 5,
-					legend: {
-						position: 'left'
-					}
-				},
-			});
+			const svg = d3.select("body").append("svg")
+				.attr("viewBox", [0, 0, dimensions.width, dimensions.height])
+				.style("overflow", "visible")
+
+			// Add the x Axis
+			x = d3.scaleUtc()
+				.domain(d3.extent(data.dates))
+				.range([dimensions.margin.left, dimensions.width - dimensions.margin.right])
+
+			y = d3.scaleLinear()
+				.domain([0, maximums.new.confirmed]).nice()
+				.range([dimensions.height - dimensions.margin.top, dimensions.margin.bottom])
+
+			const xAxis = svg.append("g")
+				.attr("transform", `translate(0,${dimensions.height - dimensions.margin.top})`)
+				.call(d3.axisBottom(x).ticks(dimensions.width / 80).tickSizeOuter(0))
+
+			const yAxis = svg.append("g")
+				.attr("transform", `translate(${dimensions.margin.left},0)`)
+				.call(d3.axisLeft(y))
+				.call(g => g.select(".domain").remove())
+				.call(g => g.select(".tick:last-of-type text").clone()
+					.attr("x", 3)
+					.attr("text-anchor", "start")
+					.attr("font-weight", "bold")
+					.text(data.y))
+
+			// Define the line
+			line = d3.line()
+				.x(function (d) { return x(d.date); })
+				.y(function (d) { return y(d.new.confirmed); });
+
+			// Draw the data
+			path = svg.append("g")
+				.attr("fill", "none")
+				.attr("stroke-width", 1.5)
+				.selectAll("path")
+				.data(data.states)
+				.join("path")
+				.style("mix-blend-mode", "multiply")
+				.style("stroke", d => d.color)
+				.attr("d", d => line(d.data));
+
+			svg.call(setupHover, path);
+		}
+
+		function setupHover(svg, path) {
+			if ("ontouchstart" in document) {
+				svg.style("-webkit-tap-highlight-color", "transparent")
+					.on("touchmove", moved)
+					.on("touchstart", entered)
+					.on("touchend", left)
+			}
+			else {
+				svg
+					.on("mousemove", moved)
+					.on("mouseenter", entered)
+					.on("mouseleave", left);
+			}
+
+			// Draw the dots, these will follow the mouse and highlight where
+			// the focus is
+			for (var state of data.states) {
+				const dot = svg.append("g")
+					.attr("display", "none");
+
+				dot.append("circle")
+					.attr("r", 3)
+					.attr("fill", state.color)
+
+				state.dot = dot;
+			}
+
+			// Box that appears when hovered showing stats for the current
+			// hovered day
+			statContainer = svg.append("g")
+				.attr("display", "none")
+
+			statContainer.append("rect")
+				.attr("width", 300)
+				.attr("height", 100)
+				.attr("rx", 3)
+				.attr("fill", "rgba(255, 255, 255, 0.8)")
+				.attr("stroke", "rgba(0, 0, 0, 0.8)")
+				.attr("stroke-width", 2);
+
+			statDate = statContainer.append("text")
+				.attr("font-family", "sans-serif")
+				.attr("font-size", 10)
+				.attr("transform", `translate(10, 20)`);
+
+			for (var state of data.states) {
+				const dot = svg.append("g")
+					.attr("display", "none");
+
+				dot.append("circle")
+					.attr("r", 3)
+					.attr("fill", state.color)
+
+				state.dot = dot;
+			}
+
+			function moved() {
+				d3.event.preventDefault();
+				const mouse = d3.mouse(this);
+				const xMouse = mouse[0];
+				const yMouse = mouse[1];
+
+				const xData = x.invert(xMouse);
+				const yData = y.invert(yMouse);
+
+
+				const xDataPointIndex = d3.bisectLeft(data.dates, xData, 1) - 1;
+
+				positionDots(xDataPointIndex);
+				updateStatContainer(xMouse, yMouse, xDataPointIndex);
+
+
+				// const i = xm - data.dates[i0] > data.dates[i1] - xm ? i1 : i0;
+				// const s = d3.least(data.series, d => Math.abs(d.values[i] - ym));
+				// path.attr("stroke", d => d === s ? null : "#ddd").filter(d => d === s).raise();
+
+				// dot.attr("transform", `translate(${x(data.dates[i])},${y(s.values[i])})`);
+				// dot.select("text").text(s.name);
+			}
+
+			function positionDots(dataIndex) {
+				var xValue = data.dates[dataIndex];
+
+				for (var state of data.states) {
+					var yValue = state.data[dataIndex].new.confirmed;
+					state.dot.attr("transform", `translate(${x(xValue)},${y(yValue)})`);
+				}
+			}
+
+			function updateStatContainer(xMouse, yMouse, dataIndex) {
+				// Position container at mouse
+				statContainer.attr("transform", `translate(${xMouse}, ${yMouse})`);
+
+				// Update date
+				var date = data.dates[dataIndex];
+				const dateTimeFormat = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', weekday: 'long' })
+
+				var formattedDate = dateTimeFormat.format(date);
+				statDate.text(formattedDate);
+			}
+
+			function entered() {
+				changeDotDisplay(true);
+				statContainer.attr("display", null);
+			}
+
+			function left() {
+				changeDotDisplay(false);
+				statContainer.attr("display", "none");
+			}
+
+			function changeDotDisplay(show) {
+				var display = show ? null : "none";
+
+				for (var state of data.states) {
+					state.dot.attr("display", display);
+				}
+			}
+
 
 		}
+
+		// function roundToNearestDay(date) {
+		// 	date.getHou
+		// }
 	</script>
 </body>
 

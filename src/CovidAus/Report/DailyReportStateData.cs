@@ -4,6 +4,7 @@
 	{
 		public string Country { get; set; }
 		public string State { get; set; }
+		public string FormattedStateName { get; set; }
 		public string LastUpdate { get; set; }
 		public int Confirmed { get; set; }
 		public int Deaths { get; set; }

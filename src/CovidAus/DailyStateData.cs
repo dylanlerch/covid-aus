@@ -14,6 +14,13 @@ namespace CovidAus
 		[JsonPropertyName("new")]
 		public Cases New { get; private set; }
 
+		public DailyStateData(DateTimeOffset date)
+		{
+			Date = date;
+			Total = new Cases();
+			New = new Cases();
+		}
+		
 		public DailyStateData(DateTimeOffset date, Cases totalCases, Cases newCases)
 		{
 			Date = date;
