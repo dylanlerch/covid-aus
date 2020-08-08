@@ -9,17 +9,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-      	
+
     - name: Setup .NET Core
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: 3.1.301
+    
+    - name: Install dependencies
+      run: dotnet restore src/CovidAus/CovidAus.csproj
 
-	- name: Install dependencies
-      run: dotnet restore
+    - name: Build
+      run: dotnet build src/CovidAus/CovidAus.csproj --configuration Release --no-restore 
     
-	i- name: Build
-      run: dotnet build --configuration Release --no-restore
-    
-	- name: Run
+    - name: Run
       run: dotnet run --project src/CovidAus/CovidAus.csproj
